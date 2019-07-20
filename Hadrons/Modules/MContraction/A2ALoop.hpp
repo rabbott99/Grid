@@ -114,10 +114,6 @@ void TA2ALoop<FImpl>::execute(void)
     {
         loop += outerProduct(left[i], right[i]);
     }
-
-    if (left.size() != 0) {
-        loop *= 1.0 / left.size();
-    }
 }
 
 END_MODULE_NAMESPACE
