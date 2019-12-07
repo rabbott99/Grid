@@ -500,7 +500,7 @@ void Grid_debug_handler_init(void)
   sigaction(SIGTRAP,&sa,NULL);
   sigaction(SIGBUS,&sa,NULL);
 
-  feenableexcept( FE_INVALID|FE_OVERFLOW|FE_DIVBYZERO);
+  feenableexcept( FE_OVERFLOW|FE_DIVBYZERO);
 
   sigaction(SIGFPE,&sa,NULL);
   sigaction(SIGKILL,&sa,NULL);
