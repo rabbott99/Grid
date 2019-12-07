@@ -182,10 +182,10 @@ LDFLAGS="$AM_LDFLAGS $LDFLAGS"
 
 AC_CHECK_FUNCS([gettimeofday])
 
-if test "${ac_MKL}x" != "nox"; then
-    AC_SEARCH_LIBS([mkl_set_interface_layer], [mkl_rt], [],
-                   [AC_MSG_ERROR("Intel MKL enabled but library not found")])
-fi
+#if test "${ac_MKL}x" != "nox"; then
+#    AC_SEARCH_LIBS([mkl_set_interface_layer], [mkl_rt], [],
+#                   [AC_MSG_ERROR("Intel MKL enabled but library not found")])
+#fi
 
 if test "${ac_IPP}x" != "nox"; then
      AC_SEARCH_LIBS([ippsCRC32C_8u], [ippdc], 
