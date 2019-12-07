@@ -445,6 +445,9 @@ void CayleyFermion5D<Impl>::SetCoefficientsZolotarev(RealD zolo_hi,Approx::zolot
   for(int s=0;s<this->Ls;s++) gamma[s] = zdata->gamma[s];
   SetCoefficientsInternal(zolo_hi,gamma,b,c);
 }
+
+#define DL(a) std::cout << GridLogDebug << #a ": " << a << std::endl;
+#define VL(a) std::cout << GridLogDebug << #a ": " << vecToStr(a) << std::endl;
 //Zolo
 template<class Impl>
 void CayleyFermion5D<Impl>::SetCoefficientsInternal(RealD zolo_hi,std::vector<Coeff_t> & gamma,RealD b,RealD c)
@@ -485,6 +488,9 @@ void CayleyFermion5D<Impl>::SetCoefficientsInternal(RealD zolo_hi,std::vector<Co
     
   double bpc = b+c;
   double bmc = b-c;
+  DL(bpc);
+  DL(bmc);
+  VL(gamma);
   _b = b;
   _c = c;
   _gamma  = gamma; // Save the parameters so we can change mass later.
@@ -496,6 +502,10 @@ void CayleyFermion5D<Impl>::SetCoefficientsInternal(RealD zolo_hi,std::vector<Co
     bs[i] = 0.5*(bpc/omega[i] + bmc);
     cs[i] = 0.5*(bpc/omega[i] - bmc);
   }
+  VL(omega);
+  VL(as);
+  VL(bs);
+  VL(as);
 
   ////////////////////////////////////////////////////////
   // Constants for the preconditioned matrix Cayley form
@@ -512,12 +522,18 @@ void CayleyFermion5D<Impl>::SetCoefficientsInternal(RealD zolo_hi,std::vector<Co
     beo[i]=as[i]*bs[i];
     ceo[i]=-as[i]*cs[i];
   }
+  VL(bee);
+  VL(cee);
+  VL(beo);
+  VL(ceo);
   aee.resize(Ls);
   aeo.resize(Ls);
   for(int i=0;i<Ls;i++){
     aee[i]=cee[i];
     aeo[i]=ceo[i];
   }
+  VL(aee);
+  VL(aeo);
   
   //////////////////////////////////////////
   // LDU decomposition of eeoo
@@ -529,35 +545,60 @@ void CayleyFermion5D<Impl>::SetCoefficientsInternal(RealD zolo_hi,std::vector<Co
   ueem.resize(Ls);
   
   for(int i=0;i<Ls;i++){
+    //LOG(Message) << GridLogDebug << "Entering loop for i = " << i << std::endl;
     
     dee[i] = bee[i];
     
     if ( i < Ls-1 ) {
+      //LOG(Message) << GridLogDebug << "i < Ls - 1 (" << i << " < " << Ls - 1 << "), setting coefficients"
+	      //<< std::endl;
 
       assert(bee[i]!=Coeff_t(0.0));
       assert(bee[0]!=Coeff_t(0.0));
       
+      //LOG(Message) << GridLogDebug << "Setting lee[" << i << "]" << std::endl;
       lee[i] =-cee[i+1]/bee[i]; // sub-diag entry on the ith column
+      //LOG(Message) << GridLogDebug << "Got lee[" << i << "] = " << lee[i] << std::endl;
       
       leem[i]=mass*cee[Ls-1]/bee[0];
+      //LOG(Message) << GridLogDebug << "Now lee[" << i << "] = " << lee[i] << std::endl;
+      //LOG(Message) << GridLogDebug << "Entering inner loop 1" << std::endl;
       for(int j=0;j<i;j++) {
+	//std::cout << GridLogDebug << "Inner loop for j = " << j << std::endl;
 	assert(bee[j+1]!=Coeff_t(0.0));
 	leem[i]*= aee[j]/bee[j+1];
+	//std::cout << GridLogDebug << "Now lee[" << i << "] = " << lee[i] << std::endl;
       }
+      //std::cout << GridLogDebug << "Exiting inner loop 1" << std::endl;
       
+      //std::cout << GridLogDebug << "Setting uee[" << i << "]" << std::endl;
       uee[i] =-aee[i]/bee[i];   // up-diag entry on the ith row
+      //std::cout << GridLogDebug << "Got uee[" << i << "] = " << uee[i] << std::endl;
       
       ueem[i]=mass;
-      for(int j=1;j<=i;j++) ueem[i]*= cee[j]/bee[j];
+      //std::cout << GridLogDebug << "Entering inner loop 2" << std::endl;
+      for(int j=1;j<=i;j++) { 
+	      //std::cout << GridLogDebug << "Inner loop 2 for j = " << j << std::endl;
+	      ueem[i]*= cee[j]/bee[j];
+      }
+      //std::cout << GridLogDebug << "Exiting inner loop 2" << std::endl;
       ueem[i]*= aee[0]/bee[0];
       
     } else { 
+      //std::cout << GridLogDebug << "i = Ls - 1, setting coefficients to 0";
       lee[i] =0.0;
       leem[i]=0.0;
       uee[i] =0.0;
       ueem[i]=0.0;
     }
+    //std::cout << GridLogDebug << "Done with loop for i = " << i << std::endl;
   }
+
+  VL(dee);
+  VL(lee);
+  VL(leem);
+  VL(uee);
+  VL(ueem);
 	
   { 
     Coeff_t delta_d=mass*cee[Ls-1];
@@ -567,6 +608,7 @@ void CayleyFermion5D<Impl>::SetCoefficientsInternal(RealD zolo_hi,std::vector<Co
     }
     dee[Ls-1] += delta_d;
   }  
+  VL(dee);
 
   int inv=1;
   this->MooeeInternalCompute(0,inv,MatpInv,MatmInv);

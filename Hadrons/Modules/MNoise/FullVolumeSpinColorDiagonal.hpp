@@ -101,18 +101,22 @@ std::vector<std::string> TFullVolumeSpinColorDiagonal<FImpl>::getOutput(void)
 template <typename FImpl>
 void TFullVolumeSpinColorDiagonal<FImpl>::setup(void)
 {
+    LOG(Message) << "Running setup for FullVolumeSpinColorDiagonal noise module" << std::endl;
     envCreateDerived(DilutedNoise<FImpl>, 
                      FullVolumeSpinColorDiagonalNoise<FImpl>,
                      getName(), 1, envGetGrid(FermionField), par().nsrc);
+    LOG(Message) << "Done running setup" << std::endl;
 }
 
 // execution ///////////////////////////////////////////////////////////////////
 template <typename FImpl>
 void TFullVolumeSpinColorDiagonal<FImpl>::execute(void)
 {
+    LOG(Message) << "Running execute for FullVolumeSpinColorDiagonal noise module" << std::endl;
     auto &noise = envGet(DilutedNoise<FImpl>, getName());
     LOG(Message) << "Generating full volume, spin-color diagonal noise" << std::endl;
     noise.generateNoise(rng4d());
+    LOG(Message) << "Done executing module." << std::endl;
 }
 
 END_MODULE_NAMESPACE

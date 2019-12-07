@@ -246,11 +246,17 @@ void Application::loadSchedule(const std::string filename)
     LOG(Message) << "Loading schedule from '" << filename << "'..."
                  << std::endl;
     read(reader, "schedule", program);
+    LOG(Message) << "Clearing program" << std::endl;
     program_.clear();
     for (auto &name: program)
     {
-        program_.push_back(vm().getModuleAddress(name));
+	LOG(Message) << "Adding program '" << name << "'" << std::endl;
+	int addr = vm().getModuleAddress(name);
+	LOG(Message) << "Program is at address " << addr;
+        program_.push_back(addr);
+	LOG(Message) << "Done adding '" << name << "'" << std::endl;
     }
+    LOG(Message) << "Done adding programs" << std::endl;
     loadedSchedule_ = true;
     scheduled_      = true;
 }

@@ -249,12 +249,20 @@ public:
   }
   
   Lattice(const Lattice& r){ // copy constructor
+    std::cout << GridLogDebug << "Entering copy constructor" << std::endl;
     _grid = r._grid;
     checkerboard = r.checkerboard;
-    _odata.resize(_grid->oSites());// essential
+    try {
+	    _odata.resize(_grid->oSites());// essential
+    }
+    catch (const std::exception &e) {
+	    std::cerr << "Exception: " << typeid(e).name() << std::endl;
+	    exit(1);
+    }
     parallel_for(int ss=0;ss<_grid->oSites();ss++){
       _odata[ss]=r._odata[ss];
     }  	
+    std::cout << GridLogDebug << "Exiting copy constructor" << std::endl;
   }
 
   Lattice(Lattice&& r){ // move constructor

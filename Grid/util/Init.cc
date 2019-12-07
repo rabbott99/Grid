@@ -165,33 +165,51 @@ void GridParseLayout(char **argv,int argc,
   mpi =std::vector<int>({1,1,1,1});
   latt=std::vector<int>({8,8,8,8});
 
+  std::cout << "Setting max threads" << std::endl;
   GridThread::SetMaxThreads();
+  std::cout << "Done setting max threads" << std::endl;
 
   std::string arg;
   if( GridCmdOptionExists(argv,argv+argc,"--mpi") ){
+	  std::cout << "Parsing mpi layout" << std::endl;
     arg = GridCmdOptionPayload(argv,argv+argc,"--mpi");
+    std::cout << "got arg = '" << arg << "'" << std::endl;
     GridCmdOptionIntVector(arg,mpi);
+    std::cout << "finished parsing vector" << std::endl;
   }
   if( GridCmdOptionExists(argv,argv+argc,"--grid") ){
+	  std::cout << "Parsing grid layout" << std::endl;
     arg= GridCmdOptionPayload(argv,argv+argc,"--grid");
+    std::cout << "got arg = '" << arg << "'" << std::endl;
     GridCmdOptionIntVector(arg,latt);
+    std::cout << "finished parsing vector" << std::endl;
   }
   if( GridCmdOptionExists(argv,argv+argc,"--threads") ){
+	  std::cout << "Parsing threads" << std::endl;
     std::vector<int> ompthreads(0);
 #ifndef GRID_OMP
     std::cout << GridLogWarning << "'--threads' option used but Grid was"
               << " not compiled with thread support" << std::endl;
 #endif
     arg= GridCmdOptionPayload(argv,argv+argc,"--threads");
+    std::cout << "got arg = '" << arg << "'" << std::endl;
     GridCmdOptionIntVector(arg,ompthreads);
+    std::cout << "Got " << ompthreads.size() << " elements" << std::endl;
     assert(ompthreads.size()==1);
+    std::cout << "Calling SetThreads" << std::endl;
     GridThread::SetThreads(ompthreads[0]);
+    std::cout << "done calling SetThreads" << std::endl;
   }
   if( GridCmdOptionExists(argv,argv+argc,"--cores") ){
+	  std::cout << "Parsing core layout";
     int cores;
     arg= GridCmdOptionPayload(argv,argv+argc,"--cores");
+    std::cout << "got arg = '" << arg << "'" << std::endl;
     GridCmdOptionInt(arg,cores);
+    std::cout << "Parsed cores = " << cores << std::endl;
+    std::cout << "Calling SetCores" << std::endl;
     GridThread::SetCores(cores);
+    std::cout << "Done calling SetCores" << std::endl;
   }
 }
 
@@ -304,13 +322,18 @@ void Grid_init(int *argc,char ***argv)
 
   std::vector<std::string> logstreams;
   std::string defaultLog("Error,Warning,Message,Performance");
+  std::cout << "GridCmdOptionCSL()" << std::endl;
   GridCmdOptionCSL(defaultLog,logstreams);
+  std::cout << "GridLogConfigure()" << std::endl;
   GridLogConfigure(logstreams);
 
 
   if( GridCmdOptionExists(*argv,*argv+*argc,"--log") ){
+    std::cout << "Parsing log options" << std::endl;
     arg = GridCmdOptionPayload(*argv,*argv+*argc,"--log");
+    std::cout << "GridCmdOptionCSL()" << std::endl;
     GridCmdOptionCSL(arg,logstreams);
+    std::cout << "GridLogConfigure()" << std::endl;
     GridLogConfigure(logstreams);
   }
 
@@ -358,6 +381,7 @@ void Grid_init(int *argc,char ***argv)
   // Debug and performance options
   ////////////////////////////////////
 
+  std::cout << "Parsing dslash params" << std::endl;
   if( GridCmdOptionExists(*argv,*argv+*argc,"--dslash-unroll") ){
     QCD::WilsonKernelsStatic::Opt=QCD::WilsonKernelsStatic::OptHandUnroll;
     QCD::StaggeredKernelsStatic::Opt=QCD::StaggeredKernelsStatic::OptHandUnroll;
@@ -370,6 +394,8 @@ void Grid_init(int *argc,char ***argv)
     QCD::WilsonKernelsStatic::Opt=QCD::WilsonKernelsStatic::OptGeneric;
     QCD::StaggeredKernelsStatic::Opt=QCD::StaggeredKernelsStatic::OptGeneric;
   }
+  std::cout << "Done parsing dslash params" << std::endl;
+  std::cout << "Parsing comms" << std::endl;
   if( GridCmdOptionExists(*argv,*argv+*argc,"--comms-overlap") ){
     QCD::WilsonKernelsStatic::Comms = QCD::WilsonKernelsStatic::CommsAndCompute;
     QCD::StaggeredKernelsStatic::Comms = QCD::StaggeredKernelsStatic::CommsAndCompute;
@@ -378,34 +404,42 @@ void Grid_init(int *argc,char ***argv)
     QCD::StaggeredKernelsStatic::Comms = QCD::StaggeredKernelsStatic::CommsThenCompute;
   }
   if( GridCmdOptionExists(*argv,*argv+*argc,"--comms-concurrent") ){
+	  std::cout << "Setting communicator policy to concurrent" << std::endl;
     CartesianCommunicator::SetCommunicatorPolicy(CartesianCommunicator::CommunicatorPolicyConcurrent);
   }
   if( GridCmdOptionExists(*argv,*argv+*argc,"--comms-sequential") ){
+	  std::cout << "Setting communicator policy to sequential" << std::endl;
     CartesianCommunicator::SetCommunicatorPolicy(CartesianCommunicator::CommunicatorPolicySequential);
   }
 
+  std::cout << "Lebesgue" << std::endl;
   if( GridCmdOptionExists(*argv,*argv+*argc,"--lebesgue") ){
     LebesgueOrder::UseLebesgueOrder=1;
   }
+  std::cout << "Parsing comms-threads" << std::endl;
   CartesianCommunicator::nCommThreads = -1;
   if( GridCmdOptionExists(*argv,*argv+*argc,"--comms-threads") ){
     arg= GridCmdOptionPayload(*argv,*argv+*argc,"--comms-threads");
     GridCmdOptionInt(arg,CartesianCommunicator::nCommThreads);
     assert(CartesianCommunicator::nCommThreads > 0);
   }
+  std::cout << "Parsing cacheblocking" << std::endl;
   if( GridCmdOptionExists(*argv,*argv+*argc,"--cacheblocking") ){
     arg= GridCmdOptionPayload(*argv,*argv+*argc,"--cacheblocking");
     GridCmdOptionIntVector(arg,LebesgueOrder::Block);
   }
+  std::cout << "Parsing notimestamp" << std::endl;
   if( GridCmdOptionExists(*argv,*argv+*argc,"--notimestamp") ){
     GridLogTimestamp(0);
   } else {
     GridLogTimestamp(1);
   }
 
+  std::cout << "Parsing Layout" << std::endl;
   GridParseLayout(*argv,*argc,
 		  Grid_default_latt,
 		  Grid_default_mpi);
+  std::cout << "Done parsing Layout" << std::endl;
 
   std::cout << GridLogMessage << "Requesting "<< GlobalSharedMemory::MAX_MPI_SHM_BYTES <<" byte stencil comms buffers "<<std::endl;
   if ( GlobalSharedMemory::Hugepages) {
