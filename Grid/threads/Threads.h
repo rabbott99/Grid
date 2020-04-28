@@ -90,9 +90,7 @@ class GridThread {
   static void SetMaxThreads(void) { 
 #ifdef GRID_OMP
     //    setenv("KMP_AFFINITY","balanced",1);
-    std::cout << "Calling omp_get_max_threads()" << std::endl;
     _threads = omp_get_max_threads();
-    std::cout << "Max threads: " << _threads << std::endl;
     omp_set_num_threads(_threads);
 #else 
     _threads = 1;
