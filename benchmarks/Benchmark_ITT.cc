@@ -722,7 +722,7 @@ int main (int argc, char ** argv)
   std::vector<double> dwf4;
   std::vector<double> dwf5;
 
-  /*if ( do_wilson ) {
+  if ( do_wilson ) {
     int Ls=1;
     std::cout<<GridLogMessage << "=================================================================================="<<std::endl;
     std::cout<<GridLogMessage << " Wilson dslash 4D vectorised" <<std::endl;
@@ -731,7 +731,7 @@ int main (int argc, char ** argv)
       double robust;
       wilson.push_back(Benchmark::DWF(1,L_list[l],robust));
     }
-  }*/
+  }
 
   int Ls=16;
   if ( do_dwf ) {
@@ -746,7 +746,7 @@ int main (int argc, char ** argv)
     }
   }
 
-  /*if ( do_dwf ) {
+  if ( do_dwf ) {
     std::cout<<GridLogMessage << "=================================================================================="<<std::endl;
     std::cout<<GridLogMessage << " Domain wall dslash 4D vectorised" <<std::endl;
     std::cout<<GridLogMessage << "=================================================================================="<<std::endl;
@@ -800,7 +800,7 @@ int main (int argc, char ** argv)
   std::cout<<GridLogMessage << " Comparison point robustness: "  << robust_list[sel] <<std::endl;
   std::cout<<GridLogMessage << "=================================================================================="<<std::endl;
 
-  }*/
+  }
 
 
   Grid_finalize();
