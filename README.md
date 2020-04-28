@@ -1,4 +1,4 @@
-# Grid [![Teamcity status](http://ci.cliath.ph.ed.ac.uk/app/rest/builds/aggregated/strob:(buildType:(affectedProject(id:Grid)),branch:name:develop)/statusIcon.svg)](http://ci.cliath.ph.ed.ac.uk/project.html?projectId=Grid&tab=projectOverview) [![Travis status](https://travis-ci.org/paboyle/Grid.svg?branch=develop)](https://travis-ci.org/paboyle/Grid)
+# Grid [![Teamcity status](http://ci.cliath.ph.ed.ac.uk/app/rest/builds/aggregated/strob:(buildType:(affectedProject(id:GridBasedSoftware_Grid)),branch:name:develop)/statusIcon.svg)](http://ci.cliath.ph.ed.ac.uk/project.html?projectId=GridBasedSoftware_Grid&tab=projectOverview) [![Travis status](https://travis-ci.org/paboyle/Grid.svg?branch=develop)](https://travis-ci.org/paboyle/Grid)
 
 **Data parallel C++ mathematical object library.**
 
@@ -48,6 +48,10 @@ Clang v3.5 and later (need 3.8 and later for OpenMP)
 GCC   v4.9.x (recommended)
 
 GCC   v6.3 and later
+
+### Specific machine compilation instructions - Summit, Tesseract
+
+[The Wiki contains specific instructions for some Summit, Tesseract and GPU compilation](https://github.com/paboyle/Grid/wiki)
 
 ### Important: 
 

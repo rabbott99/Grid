@@ -27,11 +27,9 @@ See the full license in the file "LICENSE" in the top level distribution
 directory
 *************************************************************************************/
 /*  END LEGAL */
-#ifndef GRID_BLOCK_CONJUGATE_GRADIENT_H
-#define GRID_BLOCK_CONJUGATE_GRADIENT_H
+#pragma once
 
-
-namespace Grid {
+NAMESPACE_BEGIN(Grid);
 
 enum BlockCGtype { BlockCG, BlockCGrQ, CGmultiRHS, BlockCGVec, BlockCGrQVec };
 
@@ -54,6 +52,7 @@ class BlockConjugateGradient : public OperatorFunction<Field> {
   Integer MaxIterations;
   Integer IterationsToComplete; //Number of iterations the CG took to finish. Filled in upon completion
   Integer PrintInterval; //GridLogMessages or Iterative
+  RealD TrueResidual;
   
   BlockConjugateGradient(BlockCGtype cgtype,int _Orthog,RealD tol, Integer maxit, bool err_on_no_conv = true)
     : Tolerance(tol), CGtype(cgtype),   blockDim(_Orthog),  MaxIterations(maxit), ErrorOnNoConverge(err_on_no_conv),PrintInterval(100)
@@ -154,12 +153,12 @@ virtual void operator()(LinearOperatorBase<Field> &Linop, const std::vector<Fiel
 void BlockCGrQsolve(LinearOperatorBase<Field> &Linop, const Field &B, Field &X) 
 {
   int Orthog = blockDim; // First dimension is block dim; this is an assumption
-  Nblock = B._grid->_fdimensions[Orthog];
+  Nblock = B.Grid()->_fdimensions[Orthog];
 /* FAKE */
   Nblock=8;
   std::cout<<GridLogMessage<<" Block Conjugate Gradient : Orthog "<<Orthog<<" Nblock "<<Nblock<<std::endl;
 
-  X.checkerboard = B.checkerboard;
+  X.Checkerboard() = B.Checkerboard();
   conformable(X, B);
 
   Field tmp(B);
@@ -308,7 +307,8 @@ void BlockCGrQsolve(LinearOperatorBase<Field> &Linop, const Field &B, Field &X)
 
       Linop.HermOp(X, AD);
       AD = AD-B;
-      std::cout << GridLogMessage <<"\t True residual is " << std::sqrt(norm2(AD)/norm2(B)) <<std::endl;
+      TrueResidual = std::sqrt(norm2(AD)/norm2(B));
+      std::cout << GridLogMessage <<"\tTrue residual is " << TrueResidual <<std::endl;
 
       std::cout << GridLogMessage << "Time Breakdown "<<std::endl;
       std::cout << GridLogMessage << "\tElapsed    " << SolverTimer.Elapsed()     <<std::endl;
@@ -334,11 +334,11 @@ void BlockCGrQsolve(LinearOperatorBase<Field> &Linop, const Field &B, Field &X)
 void CGmultiRHSsolve(LinearOperatorBase<Field> &Linop, const Field &Src, Field &Psi) 
 {
   int Orthog = blockDim; // First dimension is block dim
-  Nblock = Src._grid->_fdimensions[Orthog];
+  Nblock = Src.Grid()->_fdimensions[Orthog];
 
   std::cout<<GridLogMessage<<"MultiRHS Conjugate Gradient : Orthog "<<Orthog<<" Nblock "<<Nblock<<std::endl;
 
-  Psi.checkerboard = Src.checkerboard;
+  Psi.Checkerboard() = Src.Checkerboard();
   conformable(Psi, Src);
 
   Field P(Src);
@@ -444,7 +444,8 @@ void CGmultiRHSsolve(LinearOperatorBase<Field> &Linop, const Field &Src, Field &
 
       Linop.HermOp(Psi, AP);
       AP = AP-Src;
-      std::cout <<GridLogMessage << "\tTrue residual is " << std::sqrt(norm2(AP)/norm2(Src)) <<std::endl;
+      TrueResidual = std::sqrt(norm2(AP)/norm2(Src));
+      std::cout <<GridLogMessage << "\tTrue residual is " << TrueResidual <<std::endl;
 
       std::cout << GridLogMessage << "Time Breakdown "<<std::endl;
       std::cout << GridLogMessage << "\tElapsed    " << SolverTimer.Elapsed()     <<std::endl;
@@ -478,7 +479,7 @@ void MaddMatrix(std::vector<Field> &AP, Eigen::MatrixXcd &m , const std::vector<
   for(int b=0;b<Nblock;b++){
     tmp[b]   = Y[b];
     for(int bp=0;bp<Nblock;bp++) {
-      tmp[b] = tmp[b] + (scale*m(bp,b))*X[bp]; 
+      tmp[b] = tmp[b] + scomplex(scale*m(bp,b))*X[bp]; 
     }
   }
   for(int b=0;b<Nblock;b++){
@@ -488,9 +489,9 @@ void MaddMatrix(std::vector<Field> &AP, Eigen::MatrixXcd &m , const std::vector<
 void MulMatrix(std::vector<Field> &AP, Eigen::MatrixXcd &m , const std::vector<Field> &X){
   // Should make this cache friendly with site outermost, parallel_for
   for(int b=0;b<Nblock;b++){
-    AP[b] = zero;
+    AP[b] = Zero();
     for(int bp=0;bp<Nblock;bp++) {
-      AP[b] += (m(bp,b))*X[bp]; 
+      AP[b] += scomplex(m(bp,b))*X[bp]; 
     }
   }
 }
@@ -517,7 +518,7 @@ void BlockCGrQsolveVec(LinearOperatorBase<Field> &Linop, const std::vector<Field
   std::cout<<GridLogMessage<<" Block Conjugate Gradient Vec rQ : Nblock "<<Nblock<<std::endl;
 
   for(int b=0;b<Nblock;b++){ 
-    X[b].checkerboard = B[b].checkerboard;
+    X[b].Checkerboard() = B[b].Checkerboard();
     conformable(X[b], B[b]);
     conformable(X[b], X[0]); 
   }
@@ -655,7 +656,7 @@ void BlockCGrQsolveVec(LinearOperatorBase<Field> &Linop, const std::vector<Field
       if ( rr > max_resid ) max_resid = rr;
     }
 
-    std::cout << GridLogIterative << "\t Block Iteration "<<k<<" ave resid "<< sqrt(rrsum/sssum) << " max "<< sqrt(max_resid) <<std::endl;
+    std::cout << GridLogIterative << "\t Block Iteration "<<k<<" ave resid "<< std::sqrt(rrsum/sssum) << " max "<< std::sqrt(max_resid) <<std::endl;
 
     if ( max_resid < Tolerance*Tolerance ) { 
 
@@ -670,7 +671,8 @@ void BlockCGrQsolveVec(LinearOperatorBase<Field> &Linop, const std::vector<Field
 
       for(int b=0;b<Nblock;b++) Linop.HermOp(X[b], AD[b]);
       for(int b=0;b<Nblock;b++) AD[b] = AD[b]-B[b];
-      std::cout << GridLogMessage <<"\t True residual is " << std::sqrt(normv(AD)/normv(B)) <<std::endl;
+      TrueResidual = std::sqrt(normv(AD)/normv(B));
+      std::cout << GridLogMessage << "\tTrue residual is " << TrueResidual <<std::endl;
 
       std::cout << GridLogMessage << "Time Breakdown "<<std::endl;
       std::cout << GridLogMessage << "\tElapsed    " << SolverTimer.Elapsed()     <<std::endl;
@@ -690,9 +692,7 @@ void BlockCGrQsolveVec(LinearOperatorBase<Field> &Linop, const std::vector<Field
   IterationsToComplete = k;
 }
 
-
-
 };
 
-}
-#endif
+NAMESPACE_END(Grid);
+

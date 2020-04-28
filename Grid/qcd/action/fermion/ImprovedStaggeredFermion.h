@@ -25,16 +25,14 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 See the full license in the file "LICENSE" in the top level distribution
 directory
 *************************************************************************************/
-/*  END LEGAL */
+			   /*  END LEGAL */
 #ifndef GRID_QCD_IMPR_STAG_FERMION_H
 #define GRID_QCD_IMPR_STAG_FERMION_H
 
-namespace Grid {
-
-namespace QCD {
+NAMESPACE_BEGIN(Grid);
 
 class ImprovedStaggeredFermionStatic {
- public:
+public:
   static const std::vector<int> directions;
   static const std::vector<int> displacements;
   static const int npoint = 16;
@@ -42,7 +40,7 @@ class ImprovedStaggeredFermionStatic {
 
 template <class Impl>
 class ImprovedStaggeredFermion : public StaggeredKernels<Impl>, public ImprovedStaggeredFermionStatic {
- public:
+public:
   INHERIT_IMPL_TYPES(Impl);
   typedef StaggeredKernels<Impl> Kernels;
 
@@ -105,6 +103,7 @@ class ImprovedStaggeredFermion : public StaggeredKernels<Impl>, public ImprovedS
   // Multigrid assistance; force term uses too
   ///////////////////////////////////////////////////////////////
   void Mdir(const FermionField &in, FermionField &out, int dir, int disp);
+  void MdirAll(const FermionField &in, std::vector<FermionField> &out);
   void DhopDir(const FermionField &in, FermionField &out, int dir, int disp);
 
   ///////////////////////////////////////////////////////////////
@@ -139,7 +138,7 @@ class ImprovedStaggeredFermion : public StaggeredKernels<Impl>, public ImprovedS
 
   // DoubleStore impl dependent
   void ImportGauge      (const GaugeField &_Uthin ) { assert(0); }
-  void ImportGauge      (const GaugeField &_Uthin  ,const GaugeField &_Ufat);
+  void ImportGauge(const GaugeField &_Uthin, const GaugeField &_Ufat);
   void ImportGaugeSimple(const GaugeField &_UUU    ,const GaugeField &_U);
   void ImportGaugeSimple(const DoubledGaugeField &_UUU,const DoubledGaugeField &_U);
   DoubledGaugeField &GetU(void)   { return Umu ; } ;
@@ -151,7 +150,7 @@ class ImprovedStaggeredFermion : public StaggeredKernels<Impl>, public ImprovedS
   ///////////////////////////////////////////////////////////////
 
   //    protected:
- public:
+public:
   // any other parameters of action ???
   virtual int   isTrivialEE(void) { return 1; };
   virtual RealD Mass(void) { return mass; }
@@ -186,13 +185,15 @@ class ImprovedStaggeredFermion : public StaggeredKernels<Impl>, public ImprovedS
   void ContractConservedCurrent(PropagatorField &q_in_1,
                                 PropagatorField &q_in_2,
                                 PropagatorField &q_out,
+                                PropagatorField &src,
                                 Current curr_type,
                                 unsigned int mu);
-  void SeqConservedCurrent(PropagatorField &q_in, 
+  void SeqConservedCurrent(PropagatorField &q_in,
                            PropagatorField &q_out,
-                           Current curr_type, 
-                           unsigned int mu,
-                           unsigned int tmin, 
+                           PropagatorField &srct,
+                           Current curr_type,
+                           unsigned int mu, 
+                           unsigned int tmin,
                            unsigned int tmax,
 			   ComplexField &lattice_cmplx);
 };
@@ -200,6 +201,6 @@ class ImprovedStaggeredFermion : public StaggeredKernels<Impl>, public ImprovedS
 typedef ImprovedStaggeredFermion<StaggeredImplF> ImprovedStaggeredFermionF;
 typedef ImprovedStaggeredFermion<StaggeredImplD> ImprovedStaggeredFermionD;
 
-}
-}
+NAMESPACE_END(Grid);
+
 #endif

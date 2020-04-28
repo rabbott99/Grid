@@ -27,8 +27,7 @@ directory
 *************************************************************************************/
 #pragma once
 
-namespace Grid {
-namespace QCD {
+NAMESPACE_BEGIN(Grid);
 
 template <class Gimpl> class CovariantSmearing : public Gimpl 
 {
@@ -43,7 +42,7 @@ public:
 			    T& chi, 
 			    const Real& width, int Iterations, int orthog)
   {
-    GridBase *grid = chi._grid;
+    GridBase *grid = chi.Grid();
     T psi(grid);
 
     ////////////////////////////////////////////////////////////////////////////////////
@@ -84,4 +83,5 @@ public:
     }
   }
 };
-}}
+
+NAMESPACE_END(Grid);

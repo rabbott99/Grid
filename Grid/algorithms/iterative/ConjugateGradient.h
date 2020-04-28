@@ -27,11 +27,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 See the full license in the file "LICENSE" in the top level distribution
 directory
 *************************************************************************************/
-/*  END LEGAL */
+			   /*  END LEGAL */
 #ifndef GRID_CONJUGATE_GRADIENT_H
 #define GRID_CONJUGATE_GRADIENT_H
 
-namespace Grid {
+NAMESPACE_BEGIN(Grid);
 
 /////////////////////////////////////////////////////////////
 // Base classes for iterative processes based on operators
@@ -40,25 +40,30 @@ namespace Grid {
 
 template <class Field>
 class ConjugateGradient : public OperatorFunction<Field> {
- public:
+public:
+
+  using OperatorFunction<Field>::operator();
+
   bool ErrorOnNoConverge;  // throw an assert when the CG fails to converge.
                            // Defaults true.
   RealD Tolerance;
   Integer MaxIterations;
   Integer IterationsToComplete; //Number of iterations the CG took to finish. Filled in upon completion
+  RealD TrueResidual;
   
   ConjugateGradient(RealD tol, Integer maxit, bool err_on_no_conv = true)
-      : Tolerance(tol),
-        MaxIterations(maxit),
-        ErrorOnNoConverge(err_on_no_conv){};
+    : Tolerance(tol),
+      MaxIterations(maxit),
+      ErrorOnNoConverge(err_on_no_conv){};
 
   void operator()(LinearOperatorBase<Field> &Linop, const Field &src, Field &psi) {
 
+    psi.Checkerboard() = src.Checkerboard();
 
-    psi.checkerboard = src.checkerboard;
     conformable(psi, src);
 
-    RealD cp, c, a, d, b, ssq, qq, b_pred;
+    RealD cp, c, a, d, b, ssq, qq;
+    //RealD b_pred;
 
     Field p(src);
     Field mmp(src);
@@ -67,16 +72,23 @@ class ConjugateGradient : public OperatorFunction<Field> {
     // Initial residual computation & set up
     RealD guess = norm2(psi);
     assert(std::isnan(guess) == 0);
-
     
     Linop.HermOpAndNorm(psi, mmp, d, b);
-
+    
     r = src - mmp;
     p = r;
 
     a = norm2(p);
     cp = a;
     ssq = norm2(src);
+
+    // Handle trivial case of zero src
+    if (ssq == 0.){
+      psi = Zero();
+      IterationsToComplete = 1;
+      TrueResidual = 0.;
+      return;
+    }
 
     std::cout << GridLogIterative << std::setprecision(8) << "ConjugateGradient: guess " << guess << std::endl;
     std::cout << GridLogIterative << std::setprecision(8) << "ConjugateGradient:   src " << ssq << std::endl;
@@ -89,6 +101,7 @@ class ConjugateGradient : public OperatorFunction<Field> {
 
     // Check if guess is really REALLY good :)
     if (cp <= rsq) {
+      TrueResidual = std::sqrt(a/ssq);
       std::cout << GridLogMessage << "ConjugateGradient guess is converged already " << std::endl;
       IterationsToComplete = 0;	
       return;
@@ -127,15 +140,18 @@ class ConjugateGradient : public OperatorFunction<Field> {
       b = cp / c;
 
       LinearCombTimer.Start();
-      parallel_for(int ss=0;ss<src._grid->oSites();ss++){
-	vstream(psi[ss], a      *  p[ss] + psi[ss]);
-	vstream(p  [ss], b      *  p[ss] + r[ss]);
-      }
+      auto psi_v = psi.View();
+      auto p_v   = p.View();
+      auto r_v   = r.View();
+      accelerator_for(ss,p_v.size(), Field::vector_object::Nsimd(),{
+	  coalescedWrite(psi_v[ss], a      *  p_v(ss) + psi_v(ss));
+	  coalescedWrite(p_v[ss]  , b      *  p_v(ss) + r_v  (ss));
+      });
       LinearCombTimer.Stop();
       LinalgTimer.Stop();
 
       std::cout << GridLogIterative << "ConjugateGradient: Iteration " << k
-                << " residual^2 " << sqrt(cp/ssq) << " target " << Tolerance << std::endl;
+                << " residual " << sqrt(cp/ssq) << " target " << Tolerance << std::endl;
 
       // Stopping condition
       if (cp <= rsq) {
@@ -143,30 +159,37 @@ class ConjugateGradient : public OperatorFunction<Field> {
         Linop.HermOpAndNorm(psi, mmp, d, qq);
         p = mmp - src;
 
-        RealD srcnorm = sqrt(norm2(src));
-        RealD resnorm = sqrt(norm2(p));
+        RealD srcnorm = std::sqrt(norm2(src));
+        RealD resnorm = std::sqrt(norm2(p));
         RealD true_residual = resnorm / srcnorm;
 
-        std::cout << GridLogMessage << "ConjugateGradient Converged on iteration " << k << std::endl;
-        std::cout << GridLogMessage << "\tComputed residual " << sqrt(cp / ssq)<<std::endl;
-	std::cout << GridLogMessage << "\tTrue residual " << true_residual<<std::endl;
-	std::cout << GridLogMessage << "\tTarget " << Tolerance << std::endl;
+        std::cout << GridLogMessage << "ConjugateGradient Converged on iteration " << k 
+		  << "\tComputed residual " << std::sqrt(cp / ssq)
+		  << "\tTrue residual " << true_residual
+		  << "\tTarget " << Tolerance << std::endl;
 
-        std::cout << GridLogMessage << "Time breakdown "<<std::endl;
-	std::cout << GridLogMessage << "\tElapsed    " << SolverTimer.Elapsed() <<std::endl;
-	std::cout << GridLogMessage << "\tMatrix     " << MatrixTimer.Elapsed() <<std::endl;
-	std::cout << GridLogMessage << "\tLinalg     " << LinalgTimer.Elapsed() <<std::endl;
-	std::cout << GridLogMessage << "\tInner      " << InnerTimer.Elapsed() <<std::endl;
-	std::cout << GridLogMessage << "\tAxpyNorm   " << AxpyNormTimer.Elapsed() <<std::endl;
-	std::cout << GridLogMessage << "\tLinearComb " << LinearCombTimer.Elapsed() <<std::endl;
+        std::cout << GridLogIterative << "Time breakdown "<<std::endl;
+	std::cout << GridLogIterative << "\tElapsed    " << SolverTimer.Elapsed() <<std::endl;
+	std::cout << GridLogIterative << "\tMatrix     " << MatrixTimer.Elapsed() <<std::endl;
+	std::cout << GridLogIterative << "\tLinalg     " << LinalgTimer.Elapsed() <<std::endl;
+	std::cout << GridLogIterative << "\tInner      " << InnerTimer.Elapsed() <<std::endl;
+	std::cout << GridLogIterative << "\tAxpyNorm   " << AxpyNormTimer.Elapsed() <<std::endl;
+	std::cout << GridLogIterative << "\tLinearComb " << LinearCombTimer.Elapsed() <<std::endl;
 
         if (ErrorOnNoConverge) assert(true_residual / Tolerance < 10000.0);
 
 	IterationsToComplete = k;	
+	TrueResidual = true_residual;
 
         return;
       }
     }
+    // Failed. Calculate true residual before giving up                                                         
+    Linop.HermOpAndNorm(psi, mmp, d, qq);
+    p = mmp - src;
+
+    TrueResidual = sqrt(norm2(p)/ssq);
+
     std::cout << GridLogMessage << "ConjugateGradient did NOT converge "<<k<<" / "<< MaxIterations<< std::endl;
 
     if (ErrorOnNoConverge) assert(0);
@@ -174,5 +197,5 @@ class ConjugateGradient : public OperatorFunction<Field> {
 
   }
 };
-}
+NAMESPACE_END(Grid);
 #endif

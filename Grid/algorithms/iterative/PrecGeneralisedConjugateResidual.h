@@ -1,4 +1,4 @@
-    /*************************************************************************************
+/*************************************************************************************
 
     Grid physics library, www.github.com/paboyle/Grid 
 
@@ -24,8 +24,8 @@ Author: Peter Boyle <paboyle@ph.ed.ac.uk>
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
     See the full license in the file "LICENSE" in the top level distribution directory
-    *************************************************************************************/
-    /*  END LEGAL */
+*************************************************************************************/
+/*  END LEGAL */
 #ifndef GRID_PREC_GCR_H
 #define GRID_PREC_GCR_H
 
@@ -36,206 +36,204 @@ Author: Peter Boyle <paboyle@ph.ed.ac.uk>
 //NB. Likely not original reference since they are focussing on a preconditioner variant.
 //    but VPGCR was nicely written up in their paper
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-namespace Grid {
+NAMESPACE_BEGIN(Grid);
 
-  template<class Field>
-    class PrecGeneralisedConjugateResidual : public OperatorFunction<Field> {
-  public:                                                
-    RealD   Tolerance;
-    Integer MaxIterations;
-    int verbose;
-    int mmax;
-    int nstep;
-    int steps;
-    GridStopWatch PrecTimer;
-    GridStopWatch MatTimer;
-    GridStopWatch LinalgTimer;
+#define GCRLogLevel std::cout << GridLogMessage <<std::string(level,'\t')<< " Level "<<level<<" " 
 
-    LinearFunction<Field> &Preconditioner;
+template<class Field>
+class PrecGeneralisedConjugateResidual : public LinearFunction<Field> {
+public:                                                
 
-   PrecGeneralisedConjugateResidual(RealD tol,Integer maxit,LinearFunction<Field> &Prec,int _mmax,int _nstep) : 
-      Tolerance(tol), 
-      MaxIterations(maxit),
-      Preconditioner(Prec),
-      mmax(_mmax),
-      nstep(_nstep)
-    { 
-      verbose=1;
-    };
+  RealD   Tolerance;
+  Integer MaxIterations;
+  int verbose;
+  int mmax;
+  int nstep;
+  int steps;
+  int level;
+  GridStopWatch PrecTimer;
+  GridStopWatch MatTimer;
+  GridStopWatch LinalgTimer;
 
-    void operator() (LinearOperatorBase<Field> &Linop,const Field &src, Field &psi){
+  LinearFunction<Field>     &Preconditioner;
+  LinearOperatorBase<Field> &Linop;
 
-      psi=zero;
-      RealD cp, ssq,rsq;
-      ssq=norm2(src);
-      rsq=Tolerance*Tolerance*ssq;
+  void Level(int lv) { level=lv; };
+
+  PrecGeneralisedConjugateResidual(RealD tol,Integer maxit,LinearOperatorBase<Field> &_Linop,LinearFunction<Field> &Prec,int _mmax,int _nstep) : 
+    Tolerance(tol), 
+    MaxIterations(maxit),
+    Linop(_Linop),
+    Preconditioner(Prec),
+    mmax(_mmax),
+    nstep(_nstep)
+  { 
+    level=1;
+    verbose=1;
+  };
+
+  void operator() (const Field &src, Field &psi){
+
+    psi=Zero();
+    RealD cp, ssq,rsq;
+    ssq=norm2(src);
+    rsq=Tolerance*Tolerance*ssq;
       
-      Field r(src._grid);
+    Field r(src.Grid());
 
-        PrecTimer.Reset();
-         MatTimer.Reset();
-      LinalgTimer.Reset();
+    PrecTimer.Reset();
+    MatTimer.Reset();
+    LinalgTimer.Reset();
 
-      GridStopWatch SolverTimer;
-      SolverTimer.Start();
+    GridStopWatch SolverTimer;
+    SolverTimer.Start();
 
-      steps=0;
-      for(int k=0;k<MaxIterations;k++){
+    steps=0;
+    for(int k=0;k<MaxIterations;k++){
 
-	cp=GCRnStep(Linop,src,psi,rsq);
+      cp=GCRnStep(src,psi,rsq);
 
-	std::cout<<GridLogMessage<<"VPGCR("<<mmax<<","<<nstep<<") "<< steps <<" steps cp = "<<cp<<std::endl;
+      GCRLogLevel <<"PGCR("<<mmax<<","<<nstep<<") "<< steps <<" steps cp = "<<cp<<" target "<<rsq <<std::endl;
 
-	if(cp<rsq) {
+      if(cp<rsq) {
 
-	  SolverTimer.Stop();
+	SolverTimer.Stop();
 
-	  Linop.HermOp(psi,r);
-	  axpy(r,-1.0,src,r);
-	  RealD tr = norm2(r);
-	  std::cout<<GridLogMessage<<"PrecGeneralisedConjugateResidual: Converged on iteration " <<steps
-		   << " computed residual "<<sqrt(cp/ssq)
-	           << " true residual "    <<sqrt(tr/ssq)
-	           << " target "           <<Tolerance <<std::endl;
+	Linop.HermOp(psi,r);
+	axpy(r,-1.0,src,r);
+	RealD tr = norm2(r);
+	GCRLogLevel<<"PGCR: Converged on iteration " <<steps
+		 << " computed residual "<<sqrt(cp/ssq)
+		 << " true residual "    <<sqrt(tr/ssq)
+		 << " target "           <<Tolerance <<std::endl;
 
-	  std::cout<<GridLogMessage<<"VPGCR Time elapsed: Total  "<< SolverTimer.Elapsed() <<std::endl;
-	  std::cout<<GridLogMessage<<"VPGCR Time elapsed: Precon "<<   PrecTimer.Elapsed() <<std::endl;
-	  std::cout<<GridLogMessage<<"VPGCR Time elapsed: Matrix "<<    MatTimer.Elapsed() <<std::endl;
-	  std::cout<<GridLogMessage<<"VPGCR Time elapsed: Linalg "<< LinalgTimer.Elapsed() <<std::endl;
-	  return;
-	}
-
+	GCRLogLevel<<"PGCR Time elapsed: Total  "<< SolverTimer.Elapsed() <<std::endl;
+	/*
+	  GCRLogLevel<<"PGCR Time elapsed: Precon "<<   PrecTimer.Elapsed() <<std::endl;
+	  GCRLogLevel<<"PGCR Time elapsed: Matrix "<<    MatTimer.Elapsed() <<std::endl;
+	  GCRLogLevel<<"PGCR Time elapsed: Linalg "<< LinalgTimer.Elapsed() <<std::endl;
+	*/
+	return;
       }
-      std::cout<<GridLogMessage<<"Variable Preconditioned GCR did not converge"<<std::endl;
-      assert(0);
+
     }
+    GCRLogLevel<<"Variable Preconditioned GCR did not converge"<<std::endl;
+    //    assert(0);
+  }
 
-    RealD GCRnStep(LinearOperatorBase<Field> &Linop,const Field &src, Field &psi,RealD rsq){
+  RealD GCRnStep(const Field &src, Field &psi,RealD rsq){
 
-      RealD cp;
-      RealD a, b, c, d;
-      RealD zAz, zAAz;
-      RealD rAq, rq;
+    RealD cp;
+    RealD a, b;
+    RealD zAz, zAAz;
+    RealD rq;
 
-      GridBase *grid = src._grid;
+    GridBase *grid = src.Grid();
 
-      Field r(grid);
-      Field z(grid);
-      Field tmp(grid);
-      Field ttmp(grid);
-      Field Az(grid);
+    Field r(grid);
+    Field z(grid);
+    Field tmp(grid);
+    Field ttmp(grid);
+    Field Az(grid);
 
-      ////////////////////////////////
-      // history for flexible orthog
-      ////////////////////////////////
-      std::vector<Field> q(mmax,grid);
-      std::vector<Field> p(mmax,grid);
-      std::vector<RealD> qq(mmax);
+    ////////////////////////////////
+    // history for flexible orthog
+    ////////////////////////////////
+    std::vector<Field> q(mmax,grid);
+    std::vector<Field> p(mmax,grid);
+    std::vector<RealD> qq(mmax);
       
-      //////////////////////////////////
-      // initial guess x0 is taken as nonzero.
-      // r0=src-A x0 = src
-      //////////////////////////////////
-      MatTimer.Start();
-      Linop.HermOpAndNorm(psi,Az,zAz,zAAz); 
-      MatTimer.Stop();
+    GCRLogLevel<< "PGCR nStep("<<nstep<<")"<<std::endl;
+
+    //////////////////////////////////
+    // initial guess x0 is taken as nonzero.
+    // r0=src-A x0 = src
+    //////////////////////////////////
+    MatTimer.Start();
+    Linop.HermOpAndNorm(psi,Az,zAz,zAAz); 
+    MatTimer.Stop();
+    
+
+    LinalgTimer.Start();
+    r=src-Az;
+    LinalgTimer.Stop();
+    GCRLogLevel<< "PGCR true residual r = src - A psi   "<<norm2(r) <<std::endl;
+    
+    /////////////////////
+    // p = Prec(r)
+    /////////////////////
+
+    PrecTimer.Start();
+    Preconditioner(r,z);
+    PrecTimer.Stop();
+
+    MatTimer.Start();
+    Linop.HermOpAndNorm(z,Az,zAz,zAAz); 
+    MatTimer.Stop();
+
+    LinalgTimer.Start();
+
+    //p[0],q[0],qq[0] 
+    p[0]= z;
+    q[0]= Az;
+    qq[0]= zAAz;
+    
+    cp =norm2(r);
+    LinalgTimer.Stop();
+
+    for(int k=0;k<nstep;k++){
+
+      steps++;
+
+      int kp     = k+1;
+      int peri_k = k %mmax;
+      int peri_kp= kp%mmax;
 
       LinalgTimer.Start();
-      r=src-Az;
+      rq= real(innerProduct(r,q[peri_k])); // what if rAr not real?
+      a = rq/qq[peri_k];
+
+      axpy(psi,a,p[peri_k],psi);         
+
+      cp = axpy_norm(r,-a,q[peri_k],r);
       LinalgTimer.Stop();
 
-      /////////////////////
-      // p = Prec(r)
-      /////////////////////
+      GCRLogLevel<< "PGCR step["<<steps<<"]  resid " << cp << " target " <<rsq<<std::endl; 
+
+      if((k==nstep-1)||(cp<rsq)){
+	return cp;
+      }
+
+
       PrecTimer.Start();
-      Preconditioner(r,z);
+      Preconditioner(r,z);// solve Az = r
       PrecTimer.Stop();
 
       MatTimer.Start();
-      Linop.HermOp(z,tmp); 
+      Linop.HermOpAndNorm(z,Az,zAz,zAAz);
       MatTimer.Stop();
 
       LinalgTimer.Start();
-      ttmp=tmp;
-      tmp=tmp-r;
-      LinalgTimer.Stop();
 
-      /*
-      std::cout<<GridLogMessage<<r<<std::endl;
-      std::cout<<GridLogMessage<<z<<std::endl;
-      std::cout<<GridLogMessage<<ttmp<<std::endl;
-      std::cout<<GridLogMessage<<tmp<<std::endl;
-      */
+      q[peri_kp]=Az;
+      p[peri_kp]=z;
 
-      MatTimer.Start();
-      Linop.HermOpAndNorm(z,Az,zAz,zAAz); 
-      MatTimer.Stop();
+      int northog = ((kp)>(mmax-1))?(mmax-1):(kp);  // if more than mmax done, we orthog all mmax history.
+      for(int back=0;back<northog;back++){
 
-      LinalgTimer.Start();
-      //p[0],q[0],qq[0] 
-      p[0]= z;
-      q[0]= Az;
-      qq[0]= zAAz;
+	int peri_back=(k-back)%mmax;   	  assert((k-back)>=0);
 
-      cp =norm2(r);
-      LinalgTimer.Stop();
+	b=-real(innerProduct(q[peri_back],Az))/qq[peri_back];
+	p[peri_kp]=p[peri_kp]+b*p[peri_back];
+	q[peri_kp]=q[peri_kp]+b*q[peri_back];
 
-      for(int k=0;k<nstep;k++){
-
-	steps++;
-
-	int kp     = k+1;
-	int peri_k = k %mmax;
-	int peri_kp= kp%mmax;
-
-        LinalgTimer.Start();
-	rq= real(innerProduct(r,q[peri_k])); // what if rAr not real?
-	a = rq/qq[peri_k];
-
-	axpy(psi,a,p[peri_k],psi);         
-
-	cp = axpy_norm(r,-a,q[peri_k],r);
-        LinalgTimer.Stop();
-
-	if((k==nstep-1)||(cp<rsq)){
-	  return cp;
-	}
-
-	std::cout<<GridLogMessage<< " VPGCR_step["<<steps<<"]  resid " <<sqrt(cp/rsq)<<std::endl; 
-
-	PrecTimer.Start();
-	Preconditioner(r,z);// solve Az = r
-	PrecTimer.Stop();
-
-	MatTimer.Start();
-	Linop.HermOpAndNorm(z,Az,zAz,zAAz);
-	Linop.HermOp(z,tmp);
-	MatTimer.Stop();
-
-        LinalgTimer.Start();
-        tmp=tmp-r;
-	std::cout<<GridLogMessage<< " Preconditioner resid " <<sqrt(norm2(tmp)/norm2(r))<<std::endl; 
-
-	q[peri_kp]=Az;
-	p[peri_kp]=z;
-
-	int northog = ((kp)>(mmax-1))?(mmax-1):(kp);  // if more than mmax done, we orthog all mmax history.
-	for(int back=0;back<northog;back++){
-
-	  int peri_back=(k-back)%mmax;   	  assert((k-back)>=0);
-
-	  b=-real(innerProduct(q[peri_back],Az))/qq[peri_back];
-	  p[peri_kp]=p[peri_kp]+b*p[peri_back];
-	  q[peri_kp]=q[peri_kp]+b*q[peri_back];
-
-	}
-	qq[peri_kp]=norm2(q[peri_kp]); // could use axpy_norm
-        LinalgTimer.Stop();
       }
-
-      assert(0); // never reached
-      return cp;
+      qq[peri_kp]=norm2(q[peri_kp]); // could use axpy_norm
+      LinalgTimer.Stop();
     }
-  };
-}
+    assert(0); // never reached
+    return cp;
+  }
+};
+NAMESPACE_END(Grid);
 #endif

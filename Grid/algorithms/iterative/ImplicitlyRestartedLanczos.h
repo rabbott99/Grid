@@ -35,7 +35,7 @@ Author: Christoph Lehner <clehner@bnl.gov>
 //#include <zlib.h>
 #include <sys/stat.h>
 
-namespace Grid { 
+NAMESPACE_BEGIN(Grid); 
 
   ////////////////////////////////////////////////////////
   // Move following 100 LOC to lattice/Lattice_basis.h
@@ -43,6 +43,11 @@ namespace Grid {
 template<class Field>
 void basisOrthogonalize(std::vector<Field> &basis,Field &w,int k) 
 {
+  // If assume basis[j] are already orthonormal,
+  // can take all inner products in parallel saving 2x bandwidth
+  // Save 3x bandwidth on the second line of loop.
+  // perhaps 2.5x speed up.
+  // 2x overall in Multigrid Lanczos  
   for(int j=0; j<k; ++j){
     auto ip = innerProduct(basis[j],w);
     w = w - ip*basis[j];
@@ -52,44 +57,118 @@ void basisOrthogonalize(std::vector<Field> &basis,Field &w,int k)
 template<class Field>
 void basisRotate(std::vector<Field> &basis,Eigen::MatrixXd& Qt,int j0, int j1, int k0,int k1,int Nm) 
 {
+  typedef decltype(basis[0].View()) View;
+  auto tmp_v = basis[0].View();
+  Vector<View> basis_v(basis.size(),tmp_v);
   typedef typename Field::vector_object vobj;
-  GridBase* grid = basis[0]._grid;
-      
-  parallel_region
-  {
+  GridBase* grid = basis[0].Grid();
 
-    std::vector < vobj , commAllocator<vobj> > B(Nm); // Thread private
-       
-    parallel_for_internal(int ss=0;ss < grid->oSites();ss++){
+  for(int k=0;k<basis.size();k++){
+    basis_v[k] = basis[k].View();
+  }
+#if 0
+  std::vector < vobj , commAllocator<vobj> > Bt(thread_max() * Nm); // Thread private
+  thread_region
+  {
+    vobj* B = Bt.data() + Nm * thread_num();
+
+    thread_for_in_region(ss, grid->oSites(),{
       for(int j=j0; j<j1; ++j) B[j]=0.;
       
       for(int j=j0; j<j1; ++j){
 	for(int k=k0; k<k1; ++k){
-	  B[j] +=Qt(j,k) * basis[k]._odata[ss];
+	  B[j] +=Qt(j,k) * basis_v[k][ss];
 	}
       }
       for(int j=j0; j<j1; ++j){
-	  basis[j]._odata[ss] = B[j];
+	basis_v[j][ss] = B[j];
       }
+    });
+  }
+#else
+
+  int nrot = j1-j0;
+
+
+  uint64_t oSites   =grid->oSites();
+  uint64_t siteBlock=(grid->oSites()+nrot-1)/nrot; // Maximum 1 additional vector overhead
+
+  //  printf("BasisRotate %d %d nrot %d siteBlock %d\n",j0,j1,nrot,siteBlock);
+
+  Vector <vobj> Bt(siteBlock * nrot); 
+  auto Bp=&Bt[0];
+
+  // GPU readable copy of Eigen matrix
+  Vector<double> Qt_jv(Nm*Nm);
+  double *Qt_p = & Qt_jv[0];
+  for(int k=0;k<Nm;++k){
+    for(int j=0;j<Nm;++j){
+      Qt_p[j*Nm+k]=Qt(j,k);
     }
   }
+
+  // Block the loop to keep storage footprint down
+  vobj zz=Zero();
+  for(uint64_t s=0;s<oSites;s+=siteBlock){
+
+    // remaining work in this block
+    int ssites=MIN(siteBlock,oSites-s);
+
+    // zero out the accumulators
+    accelerator_for(ss,siteBlock*nrot,vobj::Nsimd(),{
+	auto z=coalescedRead(zz);
+	coalescedWrite(Bp[ss],z);
+    });
+
+    accelerator_for(sj,ssites*nrot,vobj::Nsimd(),{
+	
+      int j =sj%nrot;
+      int jj  =j0+j;
+      int ss =sj/nrot;
+      int sss=ss+s;
+
+      for(int k=k0; k<k1; ++k){
+	auto tmp = coalescedRead(Bp[ss*nrot+j]);
+	coalescedWrite(Bp[ss*nrot+j],tmp+ Qt_p[jj*Nm+k] * coalescedRead(basis_v[k][sss]));
+      }
+    });
+
+    accelerator_for(sj,ssites*nrot,vobj::Nsimd(),{
+      int j =sj%nrot;
+      int jj  =j0+j;
+      int ss =sj/nrot;
+      int sss=ss+s;
+      coalescedWrite(basis_v[jj][sss],coalescedRead(Bp[ss*nrot+j]));
+    });
+  }
+#endif
 }
 
 // Extract a single rotated vector
 template<class Field>
 void basisRotateJ(Field &result,std::vector<Field> &basis,Eigen::MatrixXd& Qt,int j, int k0,int k1,int Nm) 
 {
+  typedef decltype(basis[0].View()) View;
   typedef typename Field::vector_object vobj;
-  GridBase* grid = basis[0]._grid;
+  GridBase* grid = basis[0].Grid();
 
-  result.checkerboard = basis[0].checkerboard;
-  parallel_for(int ss=0;ss < grid->oSites();ss++){
-    vobj B = zero;
-    for(int k=k0; k<k1; ++k){
-      B +=Qt(j,k) * basis[k]._odata[ss];
-    }
-    result._odata[ss] = B;
+  result.Checkerboard() = basis[0].Checkerboard();
+  auto result_v=result.View();
+  Vector<View> basis_v(basis.size(),result_v);
+  for(int k=0;k<basis.size();k++){
+    basis_v[k] = basis[k].View();
   }
+  vobj zz=Zero();
+  Vector<double> Qt_jv(Nm);
+  double * Qt_j = & Qt_jv[0];
+  for(int k=0;k<Nm;++k) Qt_j[k]=Qt(j,k);
+  accelerator_for(ss, grid->oSites(),vobj::Nsimd(),{
+    auto B=coalescedRead(zz);
+    for(int k=k0; k<k1; ++k){
+      B +=Qt_j[k] * coalescedRead(basis_v[k][ss]);
+    }
+    coalescedWrite(result_v[ss], B);
+  });
 }
 
 template<class Field>
@@ -119,7 +198,7 @@ void basisReorderInPlace(std::vector<Field> &_v,std::vector<RealD>& sort_vals, s
 
       assert(idx[i] > i);     assert(j!=idx.size());      assert(idx[j]==i);
 
-      std::swap(_v[i]._odata,_v[idx[i]]._odata); // should use vector move constructor, no data copy
+      swap(_v[i],_v[idx[i]]); // should use vector move constructor, no data copy
       std::swap(sort_vals[i],sort_vals[idx[i]]);
 
       idx[j] = idx[i];
@@ -148,6 +227,19 @@ void basisSortInPlace(std::vector<Field> & _v,std::vector<RealD>& sort_vals, boo
     std::reverse(idx.begin(), idx.end());
   
   basisReorderInPlace(_v,sort_vals,idx);
+}
+
+// PAB: faster to compute the inner products first then fuse loops.
+// If performance critical can improve.
+template<class Field>
+void basisDeflate(const std::vector<Field> &_v,const std::vector<RealD>& eval,const Field& src_orig,Field& result) {
+  result = Zero();
+  assert(_v.size()==eval.size());
+  int N = (int)_v.size();
+  for (int i=0;i<N;i++) {
+    Field& tmp = _v[i];
+    axpy(result,TensorRemove(innerProduct(tmp,src_orig)) / eval[i],tmp,result);
+  }
 }
 
 /////////////////////////////////////////////////////////////
@@ -259,7 +351,7 @@ public:
 			    RealD _eresid, // resid in lmdue deficit 
 			    int _MaxIter, // Max iterations
 			    RealD _betastp=0.0, // if beta(k) < betastp: converged
-			    int _MinRestart=1, int _orth_period = 1,
+			    int _MinRestart=0, int _orth_period = 1,
 			    IRLdiagonalisation _diagonalisation= IRLdiagonaliseWithEigen) :
     SimpleTester(HermOp), _PolyOp(PolyOp),      _HermOp(HermOp), _Tester(Tester),
     Nstop(_Nstop)  ,      Nk(_Nk),      Nm(_Nm),
@@ -275,7 +367,7 @@ public:
 			       RealD _eresid, // resid in lmdue deficit 
 			       int _MaxIter, // Max iterations
 			       RealD _betastp=0.0, // if beta(k) < betastp: converged
-			       int _MinRestart=1, int _orth_period = 1,
+			       int _MinRestart=0, int _orth_period = 1,
 			       IRLdiagonalisation _diagonalisation= IRLdiagonaliseWithEigen) :
     SimpleTester(HermOp),  _PolyOp(PolyOp),      _HermOp(HermOp), _Tester(SimpleTester),
     Nstop(_Nstop)  ,      Nk(_Nk),      Nm(_Nm),
@@ -289,7 +381,7 @@ public:
   template<typename T>  static RealD normalise(T& v) 
   {
     RealD nn = norm2(v);
-    nn = sqrt(nn);
+    nn = std::sqrt(nn);
     v = v * (1.0/nn);
     return nn;
   }
@@ -321,10 +413,10 @@ until convergence
 */
   void calc(std::vector<RealD>& eval, std::vector<Field>& evec,  const Field& src, int& Nconv, bool reverse=false)
   {
-    GridBase *grid = src._grid;
-    assert(grid == evec[0]._grid);
+    GridBase *grid = src.Grid();
+    assert(grid == evec[0].Grid());
     
-    GridLogIRL.TimingMode(1);
+    //    GridLogIRL.TimingMode(1);
     std::cout << GridLogIRL <<"**************************************************************************"<< std::endl;
     std::cout << GridLogIRL <<" ImplicitlyRestartedLanczos::calc() starting iteration 0 /  "<< MaxIter<< std::endl;
     std::cout << GridLogIRL <<"**************************************************************************"<< std::endl;
@@ -349,14 +441,17 @@ until convergence
     {
       auto src_n = src;
       auto tmp = src;
+      std::cout << GridLogIRL << " IRL source norm " << norm2(src) << std::endl;
       const int _MAX_ITER_IRL_MEVAPP_ = 50;
       for (int i=0;i<_MAX_ITER_IRL_MEVAPP_;i++) {
 	normalise(src_n);
 	_HermOp(src_n,tmp);
+	//	std::cout << GridLogMessage<< tmp<<std::endl; exit(0);
+	//	std::cout << GridLogIRL << " _HermOp " << norm2(tmp) << std::endl;
 	RealD vnum = real(innerProduct(src_n,tmp)); // HermOp.
 	RealD vden = norm2(src_n);
 	RealD na = vnum/vden;
-	if (fabs(evalMaxApprox/na - 1.0) < 0.05)
+	if (fabs(evalMaxApprox/na - 1.0) < 0.0001)
 	  i=_MAX_ITER_IRL_MEVAPP_;
 	evalMaxApprox = na;
 	std::cout << GridLogIRL << " Approximation of largest eigenvalue: " << evalMaxApprox << std::endl;
@@ -446,7 +541,7 @@ until convergence
       assert(k2<Nm);      assert(k2<Nm);      assert(k1>0);
 
       basisRotate(evec,Qt,k1-1,k2+1,0,Nm,Nm); /// big constraint on the basis
-      std::cout<<GridLogIRL <<"basisRotated  by Qt"<<std::endl;
+      std::cout<<GridLogIRL <<"basisRotated  by Qt *"<<k1-1<<","<<k2+1<<")"<<std::endl;
       
       ////////////////////////////////////////////////////
       // Compressed vector f and beta(k2)
@@ -454,7 +549,7 @@ until convergence
       f *= Qt(k2-1,Nm-1);
       f += lme[k2-1] * evec[k2];
       beta_k = norm2(f);
-      beta_k = sqrt(beta_k);
+      beta_k = std::sqrt(beta_k);
       std::cout<<GridLogIRL<<" beta(k) = "<<beta_k<<std::endl;
 	  
       RealD betar = 1.0/beta_k;
@@ -477,7 +572,7 @@ until convergence
 
 	std::cout << GridLogIRL << "Test convergence: rotate subset of vectors to test convergence " << std::endl;
 
-	Field B(grid); B.checkerboard = evec[0].checkerboard;
+	Field B(grid); B.Checkerboard() = evec[0].Checkerboard();
 
 	//  power of two search pattern;  not every evalue in eval2 is assessed.
 	int allconv =1;
@@ -515,7 +610,7 @@ until convergence
 	
   converged:
     {
-      Field B(grid); B.checkerboard = evec[0].checkerboard;
+      Field B(grid); B.Checkerboard() = evec[0].Checkerboard();
       basisRotate(evec,Qt,0,Nk,0,Nk,Nm);	    
       std::cout << GridLogIRL << " Rotated basis"<<std::endl;
       Nconv=0;
@@ -554,11 +649,11 @@ until convergence
 /* Saad PP. 195
 1. Choose an initial vector v1 of 2-norm unity. Set β1 ≡ 0, v0 ≡ 0
 2. For k = 1,2,...,m Do:
-3. wk:=Avk−βkv_{k−1}      
-4. αk:=(wk,vk)       // 
-5. wk:=wk−αkvk       // wk orthog vk 
-6. βk+1 := ∥wk∥2. If βk+1 = 0 then Stop
-7. vk+1 := wk/βk+1
+3. wk:=Avk - b_k v_{k-1}      
+4. ak:=(wk,vk)       // 
+5. wk:=wk-akvk       // wk orthog vk 
+6. bk+1 := ||wk||_2. If b_k+1 = 0 then Stop
+7. vk+1 := wk/b_k+1
 8. EndDo
  */
   void step(std::vector<RealD>& lmd,
@@ -566,6 +661,7 @@ until convergence
 	    std::vector<Field>& evec,
 	    Field& w,int Nm,int k)
   {
+    std::cout<<GridLogIRL << "Lanczos step " <<k<<std::endl;
     const RealD tiny = 1.0e-20;
     assert( k< Nm );
 
@@ -577,20 +673,20 @@ until convergence
 
     if(k>0) w -= lme[k-1] * evec[k-1];
 
-    ComplexD zalph = innerProduct(evec_k,w); // 4. αk:=(wk,vk)
+    ComplexD zalph = innerProduct(evec_k,w);
     RealD     alph = real(zalph);
 
-    w = w - alph * evec_k;// 5. wk:=wk−αkvk
+    w = w - alph * evec_k;
 
-    RealD beta = normalise(w); // 6. βk+1 := ∥wk∥2. If βk+1 = 0 then Stop
-    // 7. vk+1 := wk/βk+1
+    RealD beta = normalise(w); 
 
     lmd[k] = alph;
     lme[k] = beta;
 
-    if (k>0 && k % orth_period == 0) {
+    if ( (k>0) && ( (k % orth_period) == 0 )) {
+      std::cout<<GridLogIRL << "Orthogonalising " <<k<<std::endl;
       orthogonalize(w,evec,k); // orthonormalise
-      std::cout<<GridLogIRL << "Orthogonalised " <<std::endl;
+      std::cout<<GridLogIRL << "Orthogonalised " <<k<<std::endl;
     }
 
     if(k < Nm-1) evec[k+1] = w;
@@ -598,6 +694,8 @@ until convergence
     std::cout<<GridLogIRL << "alpha[" << k << "] = " << zalph << " beta[" << k << "] = "<<beta<<std::endl;
     if ( beta < tiny ) 
       std::cout<<GridLogIRL << " beta is tiny "<<beta<<std::endl;
+
+    std::cout<<GridLogIRL << "Lanczos step complete " <<k<<std::endl;
   }
 
   void diagonalize_Eigen(std::vector<RealD>& lmd, std::vector<RealD>& lme, 
@@ -807,7 +905,7 @@ void diagonalize_QR(std::vector<RealD>& lmd, std::vector<RealD>& lme,
     
     // determination of 2x2 leading submatrix
     RealD dsub = lmd[kmax-1]-lmd[kmax-2];
-    RealD dd = sqrt(dsub*dsub + 4.0*lme[kmax-2]*lme[kmax-2]);
+    RealD dd = std::sqrt(dsub*dsub + 4.0*lme[kmax-2]*lme[kmax-2]);
     RealD Dsh = 0.5*(lmd[kmax-2]+lmd[kmax-1] +dd*(dsub/fabs(dsub)));
     // (Dsh: shift)
     
@@ -838,5 +936,6 @@ void diagonalize_QR(std::vector<RealD>& lmd, std::vector<RealD>& lme,
   abort();
 }
 };
-}
+
+NAMESPACE_END(Grid);
 #endif

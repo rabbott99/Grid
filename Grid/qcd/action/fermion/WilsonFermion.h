@@ -27,16 +27,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 See the full license in the file "LICENSE" in the top level distribution
 directory
 *************************************************************************************/
-/*  END LEGAL */
-#ifndef GRID_QCD_WILSON_FERMION_H
-#define GRID_QCD_WILSON_FERMION_H
+			   /*  END LEGAL */
+#pragma once
 
-namespace Grid {
-
-namespace QCD {
+NAMESPACE_BEGIN(Grid);
 
 class WilsonFermionStatic {
- public:
+public:
   static int HandOptDslash;  // these are a temporary hack
   static int MortonOrder;
   static const std::vector<int> directions;
@@ -60,8 +57,9 @@ class WilsonFermionStatic {
 };
 
 template <class Impl>
-class WilsonFermion : public WilsonKernels<Impl>, public WilsonFermionStatic {
- public:
+class WilsonFermion : public WilsonKernels<Impl>, public WilsonFermionStatic 
+{
+public:
   INHERIT_IMPL_TYPES(Impl);
   typedef WilsonKernels<Impl> Kernels;
 
@@ -117,9 +115,10 @@ class WilsonFermion : public WilsonKernels<Impl>, public WilsonFermionStatic {
   // Multigrid assistance; force term uses too
   ///////////////////////////////////////////////////////////////
   void Mdir(const FermionField &in, FermionField &out, int dir, int disp);
+  void MdirAll(const FermionField &in, std::vector<FermionField> &out);
   void DhopDir(const FermionField &in, FermionField &out, int dir, int disp);
-  void DhopDirDisp(const FermionField &in, FermionField &out, int dirdisp,
-                   int gamma, int dag);
+  void DhopDirAll(const FermionField &in, std::vector<FermionField> &out);
+  void DhopDirCalc(const FermionField &in, FermionField &out, int dirdisp,int gamma, int dag);
 
   ///////////////////////////////////////////////////////////////
   // Extra methods added by derived
@@ -138,10 +137,10 @@ class WilsonFermion : public WilsonKernels<Impl>, public WilsonFermionStatic {
 
   // Constructor
   WilsonFermion(GaugeField &_Umu, GridCartesian &Fgrid,
-                GridRedBlackCartesian &Hgrid, RealD _mass, 
+                GridRedBlackCartesian &Hgrid, RealD _mass,
                 const ImplParams &p = ImplParams(), 
                 const WilsonAnisotropyCoefficients &anis = WilsonAnisotropyCoefficients() );
-  
+
   // DoubleStore impl dependent
   void ImportGauge(const GaugeField &_Umu);
 
@@ -150,7 +149,7 @@ class WilsonFermion : public WilsonKernels<Impl>, public WilsonFermionStatic {
   ///////////////////////////////////////////////////////////////
 
   //    protected:
- public:
+public:
   virtual RealD Mass(void) { return mass; }
   virtual int   isTrivialEE(void) { return 1; };
   RealD mass;
@@ -171,7 +170,7 @@ class WilsonFermion : public WilsonKernels<Impl>, public WilsonFermionStatic {
 
   LebesgueOrder Lebesgue;
   LebesgueOrder LebesgueEvenOdd;
-
+  
   WilsonAnisotropyCoefficients anisotropyCoeff;
   
   ///////////////////////////////////////////////////////////////
@@ -180,21 +179,22 @@ class WilsonFermion : public WilsonKernels<Impl>, public WilsonFermionStatic {
   void ContractConservedCurrent(PropagatorField &q_in_1,
                                 PropagatorField &q_in_2,
                                 PropagatorField &q_out,
+                                PropagatorField &phys_src,
                                 Current curr_type,
                                 unsigned int mu);
-  void SeqConservedCurrent(PropagatorField &q_in, 
-                             PropagatorField &q_out,
-                             Current curr_type, 
-                             unsigned int mu,
-                             unsigned int tmin, 
-                             unsigned int tmax,
-			     ComplexField &lattice_cmplx);
+  void SeqConservedCurrent(PropagatorField &q_in,
+                           PropagatorField &q_out,
+                           PropagatorField &phys_src,
+                           Current curr_type,
+                           unsigned int mu, 
+                           unsigned int tmin,
+			   unsigned int tmax,
+			   ComplexField &lattice_cmplx);
 };
 
 typedef WilsonFermion<WilsonImplF> WilsonFermionF;
 typedef WilsonFermion<WilsonImplD> WilsonFermionD;
 
+NAMESPACE_END(Grid);
 
-}
-}
-#endif
+

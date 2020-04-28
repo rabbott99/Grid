@@ -15,7 +15,20 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 ################ Set flags
 # do not move!
-CXXFLAGS="-O3 $CXXFLAGS"
+AC_ARG_ENABLE([debug],[AC_HELP_STRING([--enable-debug=yes|no], [enable debug compilation ])],
+    [ac_DEBUG=${enable_debug}], [ac_DEBUG=no])
+case ${ac_DEBUG} in
+    yes)
+    CXXFLAGS="-g $CXXFLAGS "
+        ;;
+    no)
+    CXXFLAGS="-O3 $CXXFLAGS "
+        ;;
+    *)
+    CXXFLAGS="-O3 $CXXFLAGS "
+        ;;
+esac
+
 
 ############### Checks for programs
 AC_PROG_CXX
@@ -32,7 +45,6 @@ AC_DEFINE_UNQUOTED([GXX_VERSION],["$GXX_VERSION"],
       [version of g++ that will compile the code])
 
 
-
 ############### Checks for typedefs, structures, and compiler characteristics
 AC_TYPE_SIZE_T
 AC_TYPE_UINT32_T
@@ -47,6 +59,7 @@ if test "${ac_cv_prog_cxx_openmp}X" != "noX"; then
   AM_LDFLAGS="$OPENMP_CXXFLAGS $AM_LDFLAGS"
 fi
 
+
 ############### Checks for header files
 AC_CHECK_HEADERS(stdint.h)
 AC_CHECK_HEADERS(mm_malloc.h)
@@ -54,7 +67,6 @@ AC_CHECK_HEADERS(malloc/malloc.h)
 AC_CHECK_HEADERS(malloc.h)
 AC_CHECK_HEADERS(endian.h)
 AC_CHECK_HEADERS(execinfo.h)
-AC_CHECK_HEADERS(numaif.h)
 AC_CHECK_DECLS([ntohll],[], [], [[#include <arpa/inet.h>]])
 AC_CHECK_DECLS([be64toh],[], [], [[#include <arpa/inet.h>]])
 
@@ -123,13 +135,25 @@ case ${ac_SFW_FP16} in
       AC_MSG_ERROR(["SFW FP16 option not supported ${ac_SFW_FP16}"]);;
 esac
 
+############### SUMMIT JSRUN
+AC_ARG_ENABLE([summit],
+    [AC_HELP_STRING([--enable-summit=yes|no], [enable IBMs jsrun resource manager for SUMMIT])],
+    [ac_JSRUN=${enable_summit}], [ac_SUMMIT=no])
+case ${ac_SUMMIT} in
+    no);;
+    yes)
+      AC_DEFINE([GRID_IBM_SUMMIT],[1],[Let JSRUN manage the GPU device allocation]);;
+    *)
+      AC_DEFINE([GRID_IBM_SUMMIT],[1],[Let JSRUN manage the GPU device allocation]);;
+esac
+
 ############### Intel libraries
 AC_ARG_ENABLE([mkl],
     [AC_HELP_STRING([--enable-mkl=yes|no|prefix], [enable Intel MKL for LAPACK & FFTW])],
     [ac_MKL=${enable_mkl}], [ac_MKL=no])
 AC_ARG_ENABLE([ipp],
     [AC_HELP_STRING([--enable-ipp=yes|no|prefix], [enable Intel IPP for fast CRC32C])],
-    [ac_IPP=${enable_mkl}], [ac_IPP=no])
+    [ac_IPP=${enable_ipp}], [ac_IPP=no])
 
 case ${ac_MKL} in
     no)
@@ -160,19 +184,6 @@ AC_ARG_WITH([hdf5],
     [AM_CXXFLAGS="-I$with_hdf5/include $AM_CXXFLAGS"]
     [AM_LDFLAGS="-L$with_hdf5/lib $AM_LDFLAGS"])
 
-############### first-touch
-AC_ARG_ENABLE([numa],
-    [AC_HELP_STRING([--enable-numa=yes|no|prefix], [enable first touch numa opt])],
-    [ac_NUMA=${enable_NUMA}],[ac_NUMA=no])
-
-case ${ac_NUMA} in
-    no)
-        ;;
-    yes)
-        AC_DEFINE([GRID_NUMA],[1],[First touch numa locality]);;
-    *)
-        AC_DEFINE([GRID_NUMA],[1],[First touch numa locality]);;
-esac
 
 ############### Checks for library functions
 CXXFLAGS_CPY=$CXXFLAGS
@@ -228,10 +239,6 @@ AC_SEARCH_LIBS([crc32], [z],
                [have_zlib=true] [LIBS="${LIBS} -lz"],
 	       [AC_MSG_ERROR(zlib library was not found in your system.)])
 
-AC_SEARCH_LIBS([move_pages], [numa],
-               [AC_DEFINE([HAVE_LIBNUMA], [1], [Define to 1 if you have the `LIBNUMA' library])]
-               [have_libnuma=true] [LIBS="${LIBS} -lnuma"],
-	       [AC_MSG_WARN(libnuma library was not found in your system. Some optimisations will not apply)])
 
 AC_SEARCH_LIBS([H5Fopen], [hdf5_cpp],
                [AC_DEFINE([HAVE_HDF5], [1], [Define to 1 if you have the `HDF5' library])]
@@ -248,13 +255,52 @@ AC_ARG_ENABLE([simd],[AC_HELP_STRING([--enable-simd=code],
 
 AC_ARG_ENABLE([gen-simd-width],
             [AS_HELP_STRING([--enable-gen-simd-width=size],
-            [size (in bytes) of the generic SIMD vectors (default: 32)])],
+            [size (in bytes) of the generic SIMD vectors (default: 64)])],
             [ac_gen_simd_width=$enable_gen_simd_width],
-            [ac_gen_simd_width=32])
+            [ac_gen_simd_width=64])
+
+AC_ARG_ENABLE([gen-scalar],
+            [AS_HELP_STRING([--enable-gen-scalar=yes|no],
+            [enable generic scalar implementation])],
+            [ac_gen_scalar=$enable_gen_scalar],
+            [ac_gen_scalar=no])
+
+case ${ac_gen_scalar} in
+  yes)
+    AC_DEFINE([GENERIC_SCALAR],[1],[Use scalar data parallel loops])
+  ;;
+  *)
+  ;;
+esac
+
+##################### Compiler dependent choices
+case ${CXX} in 
+  nvcc) 
+#    CXX="nvcc -keep -v -x cu "
+#    CXXLD="nvcc -v -link"
+    CXX="nvcc -x cu "
+    CXXLD="nvcc -link"
+#    CXXFLAGS="$CXXFLAGS -Xcompiler -fno-strict-aliasing -Xcompiler -Wno-unusable-partial-specialization --expt-extended-lambda --expt-relaxed-constexpr"
+    CXXFLAGS="$CXXFLAGS -Xcompiler -fno-strict-aliasing --expt-extended-lambda --expt-relaxed-constexpr"
+    if test $ac_openmp = yes; then
+       CXXFLAGS="$CXXFLAGS -Xcompiler -fopenmp"
+    fi
+    ;;
+  *)
+    CXXLD=${CXX}
+    CXXFLAGS="$CXXFLAGS -fno-strict-aliasing"
+    ;;
+esac
 
 case ${ax_cv_cxx_compiler_vendor} in
   clang|gnu)
     case ${ac_SIMD} in
+      GPU)
+        AC_DEFINE([GPU_VEC],[1],[GPU vectorised 512bit])
+        AC_DEFINE_UNQUOTED([GEN_SIMD_WIDTH],[$ac_gen_simd_width],
+                           [generic SIMD vector width (in bytes)])
+        SIMD_GEN_WIDTH_MSG=" (width= $ac_gen_simd_width)"
+	SIMD_FLAGS='';;
       SSE4)
         AC_DEFINE([SSE4],[1],[SSE4 intrinsics])
 	case ${ac_SFW_FP16} in
@@ -307,6 +353,9 @@ case ${ax_cv_cxx_compiler_vendor} in
     esac;;
   intel)
     case ${ac_SIMD} in
+      GPU)
+        AC_DEFINE([GPU_VEC],[1],[GPU vectorised ])
+	SIMD_FLAGS='';;
       SSE4)
         AC_DEFINE([SSE4],[1],[SSE4 intrinsics])
         SIMD_FLAGS='-msse4.2 -xsse4.2';;
@@ -344,13 +393,6 @@ case ${ax_cv_cxx_compiler_vendor} in
 esac
 AM_CXXFLAGS="$SIMD_FLAGS $AM_CXXFLAGS"
 AM_CFLAGS="$SIMD_FLAGS $AM_CFLAGS"
-
-case ${ac_SIMD} in
-  AVX512|KNL)
-    AC_DEFINE([TEST_ZMM],[1],[compile ZMM test]);;
-  *)
-	;;
-esac
 
 ############### Precision selection
 AC_ARG_ENABLE([precision],
@@ -424,7 +466,9 @@ esac
 case ${ac_COMMS} in
     *-auto)
         LX_FIND_MPI
-        if test "x$have_CXX_mpi" = 'xno'; then AC_MSG_ERROR(["The configure could not find the MPI compilation flags. N.B. The -auto mode is not supported by Cray wrappers. Use the non -auto version in this case."]); fi
+	echo MPI_CXXFLAGS $MPI_CXXFLAGS
+	echo MPI_CXXLDFLAGS $MPI_CXXLDFLAGS
+	echo MPI_CFLAGS $MPI_CFLAGS
         AM_CXXFLAGS="$MPI_CXXFLAGS $AM_CXXFLAGS"
         AM_CFLAGS="$MPI_CFLAGS $AM_CFLAGS"
         AM_LDFLAGS="`echo $MPI_CXXLDFLAGS | sed -E 's/-l@<:@^ @:>@+//g'` $AM_LDFLAGS"
@@ -433,10 +477,7 @@ case ${ac_COMMS} in
         ;;
 esac
 
-AM_CONDITIONAL(BUILD_COMMS_SHMEM, [ test "${comms_type}X" == "shmemX" ])
-AM_CONDITIONAL(BUILD_COMMS_MPI,   [ test "${comms_type}X" == "mpiX" ])
 AM_CONDITIONAL(BUILD_COMMS_MPI3,  [ test "${comms_type}X" == "mpi3X" ] )
-AM_CONDITIONAL(BUILD_COMMS_MPIT,  [ test "${comms_type}X" == "mpitX" ] )
 AM_CONDITIONAL(BUILD_COMMS_NONE,  [ test "${comms_type}X" == "noneX" ])
 
 ############### RNG selection
@@ -506,6 +547,7 @@ DX_INIT_DOXYGEN([$PACKAGE_NAME], [doxygen.cfg])
 ############### Ouput
 cwd=`pwd -P`; cd ${srcdir}; abs_srcdir=`pwd -P`; cd ${cwd}
 GRID_CXX="$CXX"
+GRID_CXXLD="$CXXLD"
 GRID_CXXFLAGS="$AM_CXXFLAGS $CXXFLAGS"
 GRID_LDFLAGS="$AM_LDFLAGS $LDFLAGS"
 GRID_LIBS=$LIBS
@@ -515,10 +557,12 @@ GRID_BRANCH=`git rev-parse --abbrev-ref HEAD`
 AM_CXXFLAGS="-I${abs_srcdir} $AM_CXXFLAGS"
 AM_CFLAGS="-I${abs_srcdir} $AM_CFLAGS"
 AM_LDFLAGS="-L${cwd}/Grid $AM_LDFLAGS"
+AC_SUBST([CXXLD])
 AC_SUBST([AM_CFLAGS])
 AC_SUBST([AM_CXXFLAGS])
 AC_SUBST([AM_LDFLAGS])
 AC_SUBST([GRID_CXX])
+AC_SUBST([GRID_CXXLD])
 AC_SUBST([GRID_CXXFLAGS])
 AC_SUBST([GRID_LDFLAGS])
 AC_SUBST([GRID_LIBS])
@@ -576,7 +620,6 @@ AC_CONFIG_FILES(tests/IO/Makefile)
 AC_CONFIG_FILES(tests/core/Makefile)
 AC_CONFIG_FILES(tests/debug/Makefile)
 AC_CONFIG_FILES(tests/forces/Makefile)
-AC_CONFIG_FILES(tests/hadrons/Makefile)
 AC_CONFIG_FILES(tests/hmc/Makefile)
 AC_CONFIG_FILES(tests/solver/Makefile)
 AC_CONFIG_FILES(tests/lanczos/Makefile)
@@ -584,8 +627,6 @@ AC_CONFIG_FILES(tests/smearing/Makefile)
 AC_CONFIG_FILES(tests/qdpxx/Makefile)
 AC_CONFIG_FILES(tests/testu01/Makefile)
 AC_CONFIG_FILES(benchmarks/Makefile)
-AC_CONFIG_FILES(Hadrons/Makefile)
-AC_CONFIG_FILES(Hadrons/Utilities/Makefile)
 AC_OUTPUT
 
 echo ""
